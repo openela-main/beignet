@@ -1,0 +1,108 @@
+From 90a6c3c999f2ee5fd20f9f5866a6164866ac7dfa Mon Sep 17 00:00:00 2001
+From: "Rebecca N. Palmer" <rebecca_palmer@zoho.com>
+Date: Sun, 15 Jan 2017 23:17:49 +0000
+Subject: [PATCH] Add AppStream metadata
+
+AppStream is a standard for software metadata,
+including what hardware a driver supports:
+https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html
+
+Signed-off-by: Rebecca N. Palmer <rebecca_palmer@zoho.com>
+Reviewed-by: Yang Rong <rong.r.yang@intel.com>
+(cherry picked from commit 033464f4b8045a49dbcc1a84cde5c05986ca11c2)
+---
+ CMakeLists.txt                    |  5 +++++
+ com.intel.beignet.metainfo.xml.in | 18 ++++++++++++++++++
+ update_metainfo_xml.py            | 32 ++++++++++++++++++++++++++++++++
+ 3 files changed, 55 insertions(+)
+ create mode 100644 com.intel.beignet.metainfo.xml.in
+ create mode 100755 update_metainfo_xml.py
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index face3ce7..2e520213 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,6 +37,7 @@ INCLUDE (GNUInstallDirs OPTIONAL)
+ # support old CMake without GNUInstallDirs
+ if (NOT CMAKE_INSTALL_FULL_LIBDIR)
+   set (CMAKE_INSTALL_FULL_LIBDIR "${CMAKE_INSTALL_PREFIX}/lib")
++  set (CMAKE_INSTALL_FULL_DATADIR "${CMAKE_INSTALL_PREFIX}/share")
+   set (BEIGNET_LIBRARY_ARCHITECTURE "")
+ else (NOT CMAKE_INSTALL_FULL_LIBDIR)
+   set (BEIGNET_LIBRARY_ARCHITECTURE "${CMAKE_LIBRARY_ARCHITECTURE}")
+@@ -340,6 +341,10 @@ IF(BUILD_EXAMPLES)
+ ADD_SUBDIRECTORY(examples)
+ ENDIF(BUILD_EXAMPLES)
+ 
++add_custom_target(metainfo ALL
++                  COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/update_metainfo_xml.py "${LIBCL_DRIVER_VERSION_MAJOR}.${LIBCL_DRIVER_VERSION_MINOR}.${LIBCL_DRIVER_VERSION_PATCH}" ${CMAKE_CURRENT_BINARY_DIR})
++install (FILES ${CMAKE_CURRENT_BINARY_DIR}/com.intel.beignet.metainfo.xml DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/metainfo)
++
+ SET(CPACK_SET_DESTDIR ON)
+ SET(CPACK_PACKAGE_VERSION_MAJOR "${LIBCL_DRIVER_VERSION_MAJOR}")
+ SET(CPACK_PACKAGE_VERSION_MINOR "${LIBCL_DRIVER_VERSION_MINOR}")
+diff --git a/com.intel.beignet.metainfo.xml.in b/com.intel.beignet.metainfo.xml.in
+new file mode 100644
+index 00000000..65a2fad9
+--- /dev/null
++++ b/com.intel.beignet.metainfo.xml.in
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<component type="driver">
++<id>com.intel.beignet</id>
++<name>Beignet</name>
++<summary>OpenCL (GPU compute) driver for Intel GPUs</summary>
++<description>This allows using Intel integrated GPUs for general computation, speeding up some applications.</description>
++<provides>
++@modalias_list@
++</provides>
++<metadata_license>MIT</metadata_license>
++<project_license>LGPL-2.1+</project_license>
++<url type="homepage">https://www.freedesktop.org/wiki/Software/Beignet/</url>
++<url type="bugtracker">https://bugs.freedesktop.org/buglist.cgi?product=Beignet&component=Beignet&resolution=---</url>
++<developer_name>Intel</developer_name>
++<releases>
++<release version="@version@"></release>
++</releases>
++</component>
+diff --git a/update_metainfo_xml.py b/update_metainfo_xml.py
+new file mode 100755
+index 00000000..487bd757
+--- /dev/null
++++ b/update_metainfo_xml.py
+@@ -0,0 +1,32 @@
++#!/usr/bin/python
++
++import re
++import sys
++import os.path
++from io import open
++
++if len(sys.argv) != 3:
++    raise TypeError("requires version_string and output_directory")
++version_string = sys.argv[1]
++output_directory = sys.argv[2]
++source_directory = os.path.dirname(sys.argv[0])
++source_file = open(os.path.join(source_directory,"src/cl_device_data.h"),"r",encoding = 'utf-8')
++device_ids = []
++supported = False # first few devices in the file aren't supported
++for line in source_file:
++    device_id = re.match(r"#define\s+PCI_CHIP_([A-Za-z0-9_]+)\s+0x([0-9A-Fa-f]+)",line)
++    if device_id is None:
++        continue
++    if "IVYBRIDGE" in device_id.group(1):
++        supported = True # start of supported devices
++    if supported:
++        device_ids.append(device_id.group(2).upper())
++source_file.close()
++modalias_list_string = "\n".join("<modalias>pci:v00008086d0000{}*</modalias>".format(device_id) for device_id in sorted(device_ids))
++metadata_file_in = open(os.path.join(source_directory,"com.intel.beignet.metainfo.xml.in"),"r",encoding = 'utf-8')
++metadata_string = metadata_file_in.read()
++metadata_file_in.close()
++metadata_string = metadata_string.replace("@modalias_list@",modalias_list_string).replace("@version@",version_string)
++metadata_file_out = open(os.path.join(output_directory,"com.intel.beignet.metainfo.xml"),"w",encoding = 'utf-8')
++metadata_file_out.write(metadata_string)
++metadata_file_out.close()
+-- 
+2.14.2
+
